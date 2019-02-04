@@ -27,6 +27,14 @@ import os
 import struct
 import sys
 
+ftyp = b'ftyp'
+moov = b'moov'
+mdat = b'mdat'
+trak = b'trak'
+mvhd = b'mvhd'
+tkhd = b'tkhd'
+
+
 def read_atom(datastream):
     """
         Read an atom and return a tuple of (size, type) where size is the size
@@ -66,9 +74,9 @@ def get_index(datastream):
     
     # Make sure the atoms we need exist
     top_level_atoms = set([item[0] for item in index])
-    for key in ["ftyp", "moov", "mdat"]:
+    for key in [ftyp, moov, mdat]:
         if key not in top_level_atoms:
-            print "%s atom not found, is this a valid MOV/MP4 file?" % key
+            print("%s atom not found, is this a valid MOV/MP4 file?" % key)
             raise SystemExit(1)
     
     return index
@@ -90,14 +98,18 @@ def find_atoms(size, datastream):
         try:
             atom_size, atom_type = read_atom(datastream)
         except:
-            print "Error reading next atom!"
+            print("Error reading next atom!")
+            raise SystemExit(1)
+
+        if atom_size == 0:
+            print("0 sized atom!",atom_type)
             raise SystemExit(1)
         
-        if atom_type in ["trak"]:
+        if atom_type in [trak]:
             # Known ancestor atom of stco or co64, search within it!
             for atype in find_atoms(atom_size - 8, datastream):
                 yield atype
-        elif atom_type in ["mvhd", "tkhd"]:
+        elif atom_type in [mvhd, tkhd]:
             yield atom_type
         else:
             # Ignore this atom, seek to the end of it.
@@ -117,40 +129,39 @@ def get_set_rotation(infilename, set_degrees=None):
     index = get_index(datastream)
     
     for atom, pos, size in index:
-        if atom == "moov":
+        if atom == moov:
             moov_size = size
             datastream.seek(pos + 8)
             break
     else:
-        print "Couldn't find moov!"
+        print("Couldn't find moov!")
         raise SystemExit(1)
     
     degrees = set()
     
     for atom_type in find_atoms(moov_size - 8, datastream):
-        #print atom_type + " found!"
         vf = datastream.read(4)
         version = struct.unpack(">Bxxx", vf)[0]
         flags = struct.unpack(">L", vf)[0] & 0x00ffffff
         if version == 1:
-            if atom_type == "mvhd":
+            if atom_type == mvhd:
                 datastream.read(28)
-            elif atom_type == "tkhd":
+            elif atom_type == tkhd:
                 datastream.read(32)
         elif version == 0:
-            if atom_type == "mvhd":
+            if atom_type == mvhd:
                 datastream.read(16)
-            elif atom_type == "tkhd":
+            elif atom_type == tkhd:
                 datastream.read(20)
         else:
-            print "Unknown %s version: %d!" % (atom_type, version)
+            print("Unknown %s version: %d!" % (atom_type, version))
             raise SystemExit(1)
         
         datastream.read(16)
         
         matrix = list(struct.unpack(">9l", datastream.read(36)))        
 
-        if ('tkhd' == atom_type) and (set_degrees != None):
+        if (tkhd == atom_type) and (set_degrees != None):
             radians = math.radians(set_degrees)
             cos_deg = int((1<<16)*math.cos(radians))
             sin_deg = int((1<<16)*math.sin(radians))
@@ -161,29 +172,20 @@ def get_set_rotation(infilename, set_degrees=None):
         else:        
             for x in range(9):
                 if (x + 1) % 3:
-                    #print x, matrix[x]
                     matrix[x] = float(matrix[x]) / (1 << 16)
                 else:
-                    #print x, matrix[x]
                     matrix[x] = float(matrix[x]) / (1 << 30)
-        
-            #print matrix
             
-    
-            #for row in [matrix[:3], matrix[3:6], matrix[6:]]:
-            #    print "\t".join([str(round(item, 1)) for item in row])
-            #print ""
-            
-            if atom_type in ["mvhd", "tkhd"]:
+            if atom_type in [mvhd, tkhd]:
                 deg = -math.degrees(math.asin(matrix[3])) % 360
                 if not deg:
                     deg = math.degrees(math.acos(matrix[0]))
                 if deg:
                     degrees.add(deg)
         
-        if atom_type == "mvhd":
+        if atom_type == mvhd:
             datastream.read(28)
-        elif atom_type == "tkhd":
+        elif atom_type == tkhd:
             datastream.read(8)
 
     if len(degrees) == 0:
@@ -197,7 +199,6 @@ if __name__ == "__main__":
     try:    
         if 3==len(sys.argv):
             set_degrees = int(sys.argv[2])
-            # print "Forcing transformation matrix to %d degrees..." % set_degrees
             deg = get_set_rotation(sys.argv[1], set_degrees)
         else:
             deg = get_set_rotation(sys.argv[1])
@@ -205,10 +206,10 @@ if __name__ == "__main__":
             if deg == -1:
                 deg = 0
         
-            print int(deg)
+            print(int(deg))
             
-    except Exception, e:
-        print e
+    except Exception as e:
+        print( e )
         raise SystemExit(1)
 
 
